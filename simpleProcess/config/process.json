@@ -1,0 +1,6 @@
+[
+    {
+        "model" : "List Root Directory",
+        "cmds" : ["cls","dir %ROOT%"]
+    }
+]

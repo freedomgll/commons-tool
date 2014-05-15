@@ -1,0 +1,8 @@
+http://cx-freeze.readthedocs.org/en/latest/index.html
+http://sourceforge.net/projects/cx-freeze/files/4.3.2/
+
+Package simpleProcess project as follows:
+-----------------------------------------
+1: Install  cx_Freeze
+2: Run "python setup.py build"
+-----------------------------------------
