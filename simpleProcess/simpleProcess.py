@@ -18,23 +18,43 @@ class AbstractComponent:
     def finish(self):
         print('Finish')
 
+class CommonVar:
+    CONFIG_INI = 'config.ini'
+    CONFIG_FILE = 'config/process.json'
+    ICONBITMAP = 'icons/tank.ico'
+    GEOMETRY = '1000x600'
+
 import configparser
 class ConfigFile:
     def getConfigFile(self):
-        config = configparser.ConfigParser()
-        config.read('config.ini')
-        filename = config['DEFAULT']['configfile']
+        filename = self.getValue('configfile')
 
         if os.path.isfile(filename):
             return filename
-
-        return 'config/process.json'
+        return CommonVar.CONFIG_FILE
 
     def saveConfigFile(self, file):
+        ConfigFile.saveValue('configfile',file)
+
+    @staticmethod
+    def getValue(param):
         config = configparser.ConfigParser()
-        config['DEFAULT']['configfile']=file
-        with open('config.ini', 'w') as configfile:
+        config.read(CommonVar.CONFIG_INI)
+        return config['DEFAULT'][param]
+
+    @staticmethod
+    def saveValue(param, var):
+        config = configparser.ConfigParser()
+        config.read(CommonVar.CONFIG_INI)
+        config['DEFAULT'][param]=str(var)
+        with open(CommonVar.CONFIG_INI, 'w') as configfile:
             config.write(configfile)
+
+    def getColumns(self):
+        return  ConfigFile.getValue('columns')
+
+    def saveColumns(self, columns):
+        ConfigFile.saveValue('columns',columns)
 
 class ProcessComponent(AbstractComponent):
     def __init__(self,frame):
@@ -81,35 +101,53 @@ class ProcessComponent(AbstractComponent):
 
         self.replaceJS(js)
 
-        p = PanedWindow(self.frame)
+        p = PanedWindow(self.frame, orient=VERTICAL)
         p.pack(fill=BOTH, expand=1)
-        p1 = PanedWindow(p, orient=VERTICAL)
-        p.add(p1)
 
-        p2 = PanedWindow(p)
-        p.add(p2)
+        pt = PanedWindow(p)
+        p.add(pt)
 
-        run = Button(p2, text="Run Selected", command=self.callRun)
+        run = Button(pt, text="Run Selected", command=self.callRun)
         run.pack(side =TOP)
 
+        pb = PanedWindow(p)
+        pb.pack(fill=BOTH, expand=1)
+        p.add(pb)
+
+        global col
         self.pane = p
         self.runButton = run
         self.vars = []
         self.singleButtons = []
 
-        for index,item in enumerate(js):
-            print(str(index)+': '+item['model'])
-            v = StringVar()
-            v.set('0')
-            self.vars.append(v)
+        l_cmds = len(js)
+        rows = int((l_cmds+col.get()-1)/col.get())
 
-            c = Checkbutton(p1, text=item['model'], variable = v , command = lambda : self.callCheck(),
-                            onvalue=item['model'], offvalue='0',borderwidth=10)
-            c.grid(row=index+1,column=0, sticky = W)
+        pcs = []
+        for c in range(0,col.get()):
+            pc = PanedWindow(pb)
+            pc.pack(fill=BOTH, expand=1)
+            pcs.append(pc)
+            pb.add(pc)
 
-            items = self.getSource(item['model'])
-            singleButton = self.SingleRunButton(p1 ,index,items['cmds'],self.outText.text)
-            self.singleButtons.append(singleButton)
+        for c in range(0,col.get()):
+            pc = pcs[c]
+            for r in range(0,rows):
+                index = c*rows + r
+                if index < l_cmds:
+                    item = js[index]
+                    print(str(index)+': '+item['model'])
+                    v = StringVar()
+                    v.set('0')
+                    self.vars.append(v)
+
+                    b = Checkbutton(pc, text=item['model'], variable = v , command = lambda : self.callCheck(),
+                                    onvalue=item['model'], offvalue='0',borderwidth=10)
+                    b.grid(row=r,column=0, sticky = W)
+
+                    items = self.getSource(item['model'])
+                    singleButton = self.SingleRunButton(pc ,r,items['cmds'],self.outText.text)
+                    self.singleButtons.append(singleButton)
 
     def callCheck(self):
         text = self.outText.text
@@ -125,7 +163,7 @@ class ProcessComponent(AbstractComponent):
     class SingleRunButton:
         def __init__(self, p, index, cmds, text):
             self.b = Button(p,text="Run",command = lambda : self.callSingleRun(cmds, text))
-            self.b.grid(row=index+1,column=1)
+            self.b.grid(row=index,column=1)
 
         def start(self):
             self.b['state'] = DISABLED
@@ -179,17 +217,18 @@ class ProcessComponent(AbstractComponent):
         self.createWidgets()
 
 class EnvironmentComponent:
-    def __init__(self, frame, setting):
+    def __init__(self, frame, component):
         self.frame = frame
-        self.setting = setting
+        self.component = component
         self.createWidgets()
 
     def createWidgets(self):
         text = tix.ScrolledText(self.frame)
         text.pack(fill = BOTH, expand = TRUE)
+        setting = self.component.setting
 
-        if os.path.exists(self.setting):
-            file = open(self.setting,'r+')
+        if os.path.exists(setting):
+            file = open(setting,'r+')
             for line in file.readlines():
                 text.text.insert(END,line)
             file.close()
@@ -204,11 +243,12 @@ class EnvironmentComponent:
         pass
 
     def callSave(self):
-        print(self.text.get(1.0,END))
-        f = open(self.setting, 'w')
-        f.writelines(self.text.get(1.0,END).rstrip())
+        print(self.text.get(1.0,'end-1c'))
+        f = open(self.component.setting, 'w')
+        f.writelines(self.text.get(1.0,'end-1c'))
         f.close()
         self.frame.destroy()
+        self.component.callLoad(self.component.cf)
 
     def callCancel(self):
         self.frame.destroy()
@@ -216,7 +256,7 @@ class EnvironmentComponent:
 class MenuComponent:
     def __init__(self, frame):
         self.frame = frame
-        self.cf = "config/process.json"
+        self.cf = ConfigFile().getConfigFile()
         self.createWidgets()
 
     def createWidgets(self):
@@ -224,10 +264,17 @@ class MenuComponent:
 
         fileMenu = Menu(menu)
         menu.add_cascade(label="File", menu=fileMenu)
-        fileMenu.add_command(label="Load...", command=self.callLoad)
-        fileMenu.add_command(label="Reload", command=self.callReload)
+        fileMenu.add_command(label="Load Config File...", command=self.callLoad)
+        fileMenu.add_command(label="Refresh", command=self.callReload)
         fileMenu.add_separator()
-        fileMenu.add_command(label="Settings...", command=self.callSetting)
+        fileMenu.add_command(label="Set Environment Variables", command=self.callSetting)
+
+        viewMenu = Menu(menu)
+        menu.add_cascade(label="View", menu=viewMenu)
+        global col
+        viewMenu.add_radiobutton(label="Show Column 1", variable=col, value=1, command=self.callSetColumns)
+        viewMenu.add_radiobutton(label="Show Column 2", variable=col, value=2, command=self.callSetColumns)
+        viewMenu.add_radiobutton(label="Show Column 3", variable=col, value=3, command=self.callSetColumns)
 
         helpMenu = Menu(menu)
         menu.add_cascade(label="Help", menu=helpMenu)
@@ -239,27 +286,35 @@ class MenuComponent:
         self.component = component
 
     def callLoad(self):
-        name = askopenfilename()
+        name = askopenfilename(filetypes=[("Config Files","*.json"),('All Files','*')])
         if name:
             self.cf = name
             self.component.callLoad(self.cf)
+
+    def callSetColumns(self):
+        global col
+        ConfigFile.saveColumns(self,col.get())
+        self.component.callLoad(self.cf)
 
     def callReload(self):
         self.component.callLoad(self.cf)
 
     def callSetting(self):
         tl = Toplevel()
-        EnvironmentComponent(tl, self.component.setting)
+        EnvironmentComponent(tl, self.component)
         pass
 
     def callAbout(self):
-        messagebox.showinfo('Simple Process','Supporting development tool!\nAuthor: lgu\nSkype: freedomgll\nDate: 2014/5/5\nVersion: 0.5')
-
+        messagebox.showinfo('Simple Process','Supporting development tool!\nAuthor: lgu\nSkype: freedomgll\nDate: 2014/9/30\nVersion: 0.7')
 
 master = tix.Tk()
 master.wm_title("Simple Process")
-master.wm_iconbitmap("icons/tank.ico")
-master.geometry('800x600')
+master.wm_iconbitmap(CommonVar.ICONBITMAP)
+master.geometry(CommonVar.GEOMETRY)
+
+col = IntVar()
+columns = ConfigFile().getColumns()
+col.set(columns)
 
 menu = MenuComponent(master)
 process = ProcessComponent(master)

@@ -19,7 +19,7 @@ executables = [
 ]
 
 setup(name='simpleProcess',
-      version = '0.5',
+      version = '0.7',
       description = 'Simple Process',
       options = dict(build_exe = buildOptions),
       executables = executables)
